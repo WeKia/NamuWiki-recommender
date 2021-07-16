@@ -3,6 +3,18 @@ import pandas as pd
 import traceback
 import time
 import multiprocessing as mp
+import argparse
+
+def get_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--json_path', type=str, help='Path for namu wiki dump json file')
+    parser.add_argument('--output', type=str, default='json_parsed.csv',
+                        help='Path for output file')
+    parser.add_argument('--proc_num', type=int, help='Number of parsing processor default is -1 that is max core of cpu', default=-1)
+
+    args = parser.parse_args()
+
+    return args
 
 class worker(mp.Process):
     def __init__(self, dq, id, wq, rq):
@@ -330,10 +342,14 @@ class worker(mp.Process):
 
 
 
-def main():
-    f = open('C:\\Users\\KimMinSang\\Downloads\\namuwiki210301\\namuwiki_20210301.json', 'r', encoding='utf8')
+def main(args):
+    f = open(args.json_path, 'r', encoding='utf8')
 
-    process_num = mp.cpu_count() - 1
+    if args.proc_num == -1:
+        process_num = mp.cpu_count() - 1
+    else:
+        process_num = args.proc_num
+
     frame = None
     doc = ""
     block_size = 4096
@@ -429,7 +445,7 @@ def main():
 
                     if read >= eof:
                         break
-                        
+
                     continue
 
                 doc += block[doc_start:]
@@ -454,8 +470,9 @@ def main():
 
     print('Write csv')
 
-    frame.to_csv('json_parsed.csv', index=False,encoding='utf-8-sig')
+    frame.to_csv(args.output, index=False,encoding='utf-8-sig')
 
 
 if __name__ == '__main__':
-    main()
+    args = get_parser()
+    main(args)
