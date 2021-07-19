@@ -1,15 +1,11 @@
 {
     "name" : "나무위키 문서추천",
-    "version" : "0.1.7",
+    "version" : "0.1.8",
     "description" : "Namu wiki recommendation",
     "permissions" : ["storage"],
     "host_permissions" : [
         "*://namu.wiki/*"
     ],
-    "action": {
-        "default_icon": "icon/icon.png",
-        "default_popup": "src/popup.html"
-    },
     "content_scripts": [
         {
             "matches": [
