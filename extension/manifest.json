@@ -1,12 +1,8 @@
 {
     "name" : "나무위키 문서추천",
-    "version" : "0.1",
+    "version" : "0.1.7",
     "description" : "Namu wiki recommendation",
     "permissions" : ["storage"],
-    "background" : {
-        "scripts" : ["src/jquery-3.3.1.js", "src/main.js"],
-        "persistent" : false
-    },
     "host_permissions" : [
         "*://namu.wiki/*"
     ],
@@ -17,11 +13,14 @@
     "content_scripts": [
         {
             "matches": [
-                "*://namu.wiki/*"
+                "*://namu.wiki/w/*"
             ],
             "js": [
                 "src/jquery-3.3.1.js",
                 "src/main.js"
+            ],
+            "css" : [
+                "css/tables.css"
             ],
             "run_at": "document_start",
             "all_frames": true

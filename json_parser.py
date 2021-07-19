@@ -28,6 +28,9 @@ class worker(mp.Process):
         while True:
             data = self.dq.get()
 
+            if data == 'terminate':
+                break
+
             # Remove special parenthesis that is special commands
             # ex. [include(~~)], [* ~~]
             copied_text = data['text'] + ""
@@ -357,10 +360,13 @@ def main(args):
     # queue for non running process
     work_queue = mp.Queue(maxsize=process_num)
     # queue for processed data
-    result_queue = mp.Queue()
+    result_queue = mp.Manager().Queue()
     pool = []
+
+
     for i in range(process_num):
         data_queue = mp.Queue()
+
         w = worker(data_queue, i, work_queue, result_queue)
         w.start()
         pool.append(data_queue)
@@ -423,7 +429,7 @@ def main(args):
 
                         processed_docs += 1
 
-                        if processed_docs % 100 == 0:
+                        if processed_docs % 1000 == 0:
                             print(f'docs proccessed {processed_docs} times!')
                             print(f'time elapsed {time.time() - start_time}')
 
@@ -451,26 +457,35 @@ def main(args):
                 doc += block[doc_start:]
                 break
 
-    print('process done')
+    print(f'total {processed_docs} docs process done')
 
     while not work_queue.full():
         continue
 
+    # Terminate all children processes
+    for dq in pool:
+        dq.put('terminate')
+
     print('do concatenate')
+
+    index = 0
+    dicts = []
 
     while not result_queue.empty():
         diction = result_queue.get()
 
-        data = pd.DataFrame(data=diction)
+        dicts.append(diction)
 
-        if frame is None:
-            frame = data
-        else:
-            frame = pd.concat([frame, data])
+        index += 1
+
+        if index % 10000 == 0:
+            print(f"Concate {index} docs complete")
 
     print('Write csv')
 
-    frame.to_csv(args.output, index=False,encoding='utf-8-sig')
+    frame = pd.DataFrame(dicts)
+
+    frame.to_csv(args.output, index=False, encoding='utf-8-sig')
 
 
 if __name__ == '__main__':

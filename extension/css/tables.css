@@ -1,0 +1,38 @@
+.basetable{
+    padding: 0;
+    background-color: #fff;
+    border: .0625rem solid #ccc;
+    position: relative;
+    margin-bottom: .75rem;
+}
+
+.tabletitle{
+    margin: 1.25rem;
+    font-weight: 700;
+    font-size: 1.25rem;
+    line-height: 1.1;
+}
+
+.innerbox {
+    box-sizing: inherit;
+}
+
+.innertext {
+    display: block;
+    padding: .3rem 3.3rem .3rem .5rem;
+    border-top: 1px solid #ccc;
+    word-wrap: break-word;
+    background-color: transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-wrap: normal;
+    white-space: nowrap;
+}
+
+.tablebutton {
+    color: #0275d8;
+    text-decoration: none;
+    display: block;
+    text-align: right;
+    padding: .5rem .7rem;
+}
