@@ -140,3 +140,4 @@ cython_debug/
 # Custom
 *.csv
 .idea/
+*.txt

@@ -104,7 +104,7 @@ function listen(currentHref) {
     if(currentHref.indexOf("namu.wiki/w/")> -1)
     {
 
-      const docu_name =  decodeURIComponent(currentHref.split("namu.wiki/w/")[1]);
+      const docu_name =  decodeURIComponent(currentHref.split("namu.wiki/w/")[1].split('?')[0].split('#')[0]);
 
       if (recentView.titles.indexOf(docu_name) == -1)
       {

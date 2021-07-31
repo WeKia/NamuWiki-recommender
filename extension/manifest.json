@@ -1,6 +1,6 @@
 {
     "name" : "나무위키 문서추천",
-    "version" : "0.1.8",
+    "version" : "0.1.10",
     "description" : "Namu wiki recommendation",
     "permissions" : ["storage"],
     "host_permissions" : [
