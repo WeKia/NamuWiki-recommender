@@ -3,10 +3,13 @@ import argparse
 import numpy as np
 import networkx as nx
 import pandas as pd
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+import multiprocessing as mp
+import matplotlib.pyplot as plt
 from itertools import combinations
 from utils.graph_utils import random_walk
 from utils.tokenization_kobert import KoBertTokenizer
@@ -16,6 +19,8 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pad_num', type=str, help='Padding size of side information')
     parser.add_argument('--pair_path', type=str, help='Path to user-item pair csv file')
+    parser.add_argument('--graph_path', type=str, help='Path to graph file if not exist make new file', default='Graph.gz')
+    parser.add_argument('--num_process', type=int, help='Number of process that processing graph parse', default=-1)
 
     args = parser.parse_args()
 
@@ -107,13 +112,35 @@ class GraphDataset(Dataset):
     def __len__(self):
         pass
 
-def make_graph(args):
+def Find_Pairs(df):
+    """
+    Make possible pairs that one contributors contributed documents
+    :param df:
+    :return pairs:
+    """
+    pairs = []
+
+    for index, row in df.iterrows():
+        related = row['title']
+        # Add every pairs of documents that same contributor joins.
+        for pair in combinations(related, 2):
+            pairs.append(pair)
+
+    return pairs
+
+def Make_Graph(args):
     """
     Make Graph from user-item pairs
 
     :param args: pair_path path to csv file
     :return Grpah:
     """
+
+    if args.num_process == -1:
+        proc_num = mp.cpu_count() - 1
+    else:
+        proc_num = args.num_process
+
     pairs = pd.read_csv(args.pair_path)
 
     G = nx.Graph()
@@ -121,22 +148,48 @@ def make_graph(args):
     # make list by grouping contributors
     pairs = pairs.groupby('contributors').agg({'title' : lambda x : x.tolist()})
 
-    total_contributors = len(pairs)
+    print(pairs.head(5))
 
-    for index, row in tqdm(pairs.iterrows(), total=total_contributors):
+    print(f'total contributors : {len(pairs)}')
+    pairs = pairs[:1000]
+
+    #To remove duplicates, use Set object
+    pair_list = set()
+
+    for index, row in tqdm(pairs.iterrows(), total=len(pairs)):
         related = row['title']
         # Add every pairs of documents that same contributor joins.
         for pair in combinations(related, 2):
             G.add_edges_from([pair])
 
+    # pool = mp.Pool(proc_num)
+    #
+    # res = pool.map(Find_Pairs, np.array_split(pairs[:10000], proc_num))
+    #
+    # pool.close()
+    # pool.join()
+
+    # pair = []
+    #
+    # for pair_list in res:
+    #     pair += pair_list
 
 
     nx.write_edgelist(G, "Graph.gz")
     nx.draw(G)
+    plt.show()
+
     return G
 
 def main(args):
-    make_graph(args)
+
+    if not os.path.exists(args.graph_path):
+        print("Graph file not exists! process pairs to graph...")
+        Make_Graph(args)
+    else:
+        G = nx.read_edgelist(args.graph_path)
+
+        nx.write_gexf(G, 'Graph_gephi.gexf')
 
 
 if __name__ == '__main__':

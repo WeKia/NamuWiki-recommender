@@ -18,9 +18,10 @@ def get_parser():
     parser.add_argument('--proc_num', type=int, help='Number of parsing processor default is -1 that is max core of cpu', default=-1)
     parser.add_argument('--use_category', action='store_true', default=False,
                         help='Use category instead of title')
+    parser.add_argument('--convert_idx', action='store_true', default=False, help='Convert item, users to idx')
     parser.add_argument('--doc_min', type=int, help='Restrict minimum number of how many documents contributors contributed', default=20)
-    parser.add_argument('--doc_max', type=int,help='Restrict maximum number of how many documents contributors contributed', default=40)
-    parser.add_argument('--cont_min', type=int, help='Restrict minimum number of contributors of document ', default=10)
+    parser.add_argument('--doc_max', type=int,help='Restrict maximum number of how many documents contributors contributed', default=100)
+    parser.add_argument('--cont_min', type=int, help='Restrict minimum number of contributors of document ', default=5)
     parser.add_argument('--val_ratio', type=float, default=0.1)
     parser.add_argument('--test_ratio', type=float, default=0.1)
 
@@ -132,7 +133,7 @@ def mpPandasObj(func,pdObj,numThreads=24,mpBatches=1,**kargs):
 
 def make_csv(args):
 
-    csv = pd.read_csv(args.csv_path)
+    csv = pd.read_csv(args.csv_path, keep_default_na=False, na_values=[''])
 
     if args.proc_num == -1:
         process_num = mp.cpu_count() - 1
@@ -145,6 +146,7 @@ def make_csv(args):
     csv['category'] = csv.category.apply(lambda x: ast.literal_eval(x)[0])
     csv['link_length'] = csv.links.apply(lambda x: len(x))
     redirect = csv[(csv.link_length == 1) & (csv.text.str.contains('redirect'))]
+    csv = csv[~((csv.link_length == 1) & (csv.text.str.contains('redirect')))]
 
     relink = {}
 
@@ -187,7 +189,7 @@ def make_csv(args):
 
         i += 1
 
-        if (i % 1000 == 0):
+        if (i % 10000 == 0):
             print(f"processed {i}")
 
     print('process done')
@@ -195,14 +197,34 @@ def make_csv(args):
     # processed = mpPandasObj(process_contributors, csv, numThreads=process_num, relink=relink)
     # processed = pd.DataFrame(list(processed.items()), columns=['title', 'contributors'])
     processed = pd.DataFrame(list(diction.items()), columns=['title', 'contributors'])
-    processed['title'] = processed.title.apply(lambda x : category_transformer[x])
+    if args.use_category:
+        processed['title'] = processed.title.apply(lambda x : category_transformer[x])
 
     processed = processed.explode('contributors')
     processed = processed.explode('title')
 
     processed = processed.drop_duplicates().dropna()
 
-    print(processed)
+    # contributor_count = processed.groupby('title').count()
+    # restricted_docs = contributor_count[contributor_count['contributors'] >= args.cont_min].index.tolist()
+    # processed = processed[processed['title'].isin(restricted_docs)]
+    #
+    # doc_count = processed.groupby('contributors').count()
+    # restricted_conts = doc_count[(doc_count['title'] >= args.doc_min) & (doc_count['title'] <= args.doc_max)].index.tolist()
+    # processed = processed[processed['contributors'].isin(restricted_conts)]
+    #
+    # print(processed.groupby('contributors').count().describe())
+    # print(processed.groupby('title').count().describe())
+    #
+    # csv = csv[csv['title'].isin(pd.unique(processed['title']))]
+
+    if args.convert_idx:
+        doc2id = dict((did, i) for (i, did) in enumerate(pd.unique(processed['title'])))
+        cont2id = dict((cont, i) for (i, cont) in enumerate(pd.unique(processed['contributors'])))
+
+        processed['title'] = processed.title.apply(lambda x : doc2id[x])
+        processed['contributors'] = processed.contributors.apply(lambda x : cont2id[x])
+        csv['id'] = csv.title.apply(lambda x : doc2id[x])
 
     processed.to_csv(args.contributor_path, index=False, encoding='utf-8-sig')
 
@@ -222,20 +244,15 @@ def main(args):
     contributors = pd.read_csv(args.contributor_path)
     docs = pd.read_csv(args.info_path)
 
+
+    # restrict mimum and maximum
     contributor_count = contributors.groupby('title').count()
-    doc_count = contributors.groupby('contributors').count()
-
-    print(contributor_count.describe())
-    print(doc_count.describe())
-
-    restricted_conts = doc_count[(doc_count['title'] >= args.doc_min) & (doc_count['title'] <= args.doc_max)].index.tolist()
     restricted_docs = contributor_count[contributor_count['contributors'] >= args.cont_min].index.tolist()
-
-    print(len(restricted_conts))
-    print(len(restricted_docs))
-
-    contributors = contributors[contributors['contributors'].isin(restricted_conts)]
     contributors = contributors[contributors['title'].isin(restricted_docs)]
+
+    doc_count = contributors.groupby('contributors').count()
+    restricted_conts = doc_count[(doc_count['title'] >= args.doc_min) & (doc_count['title'] <= args.doc_max)].index.tolist()
+    contributors = contributors[contributors['contributors'].isin(restricted_conts)]
 
     n_cont = len(restricted_conts)
     val_size = int(n_cont * args.val_ratio)
