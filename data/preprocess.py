@@ -7,6 +7,7 @@ import datetime as dt
 import multiprocessing as mp
 import sys
 import os
+from functools import partial
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -219,17 +220,24 @@ def make_csv(args):
     # csv = csv[csv['title'].isin(pd.unique(processed['title']))]
 
     if args.convert_idx:
-        doc2id = dict((did, i) for (i, did) in enumerate(pd.unique(processed['title'])))
+        unique_title = pd.unique(processed['title'])
+        doc2id = dict((did, i) for (i, did) in enumerate(unique_title))
         cont2id = dict((cont, i) for (i, cont) in enumerate(pd.unique(processed['contributors'])))
 
         processed['title'] = processed.title.apply(lambda x : doc2id[x])
         processed['contributors'] = processed.contributors.apply(lambda x : cont2id[x])
         csv['id'] = csv.title.apply(lambda x : doc2id[x])
+        csv['links'] = csv.links.apply(lambda x : [doc2id[link] for link in x if doc2id.get(link)])
 
     processed.to_csv(args.contributor_path, index=False, encoding='utf-8-sig')
 
     csv = csv.drop('contributors', axis=1)
     csv.to_csv(args.info_path, index=False, encoding='utf-8-sig')
+
+    with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
+        for did in pd.unique(processed['title']):
+            f.write('%s\n' % did)
+
 
 def main(args):
     pd.set_option('display.max_columns', 500)
@@ -353,9 +361,9 @@ def main(args):
     # test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
     # test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
 
-    with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
-        for did in unique_did:
-            f.write('%s\n' % did)
+    # with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
+    #     for did in unique_did:
+    #         f.write('%s\n' % did)
 
 
 if __name__ == '__main__':
