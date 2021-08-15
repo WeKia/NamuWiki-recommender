@@ -1,17 +1,19 @@
 # Implementation Billion-scale Commodity Embedding for E-commerce Recommendation in Alibaba
 import argparse
+import sys
+
 import numpy as np
 import networkx as nx
 import pandas as pd
+from functools import partial
 import os
 import time
-import multiprocessing as mp
-import parmap
 import torch
 import torch.nn as nn
+from pympler.asizeof import asizeof
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
-from utils.graph_utils import random_walk
+from utils.graph_utils import random_walk, CompactList
 from utils.tokenization_kobert import KoBertTokenizer
 from transformers import DistilBertModel
 
@@ -19,8 +21,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--max_length', type=int, help='Maximum length of each categories', default=64)
 parser.add_argument('--max_category', type=int, help='Maximum number of categories', default=45)
 parser.add_argument('--info_path', type=str, help='Path to documents information csv file')
-parser.add_argument('--graph_path', type=str, help='Path to graph file if not exist make new file', default='Graph.gz')
+parser.add_argument('--graph_path', type=str, help='Path to graph file if not exist make new file', default='data/Graph.gz')
+parser.add_argument('--pass_graph', action='store_true', default=False, help='Pass loading graph. Use it if data already processed')
+parser.add_argument('--data_path', type=str, help='Path to preprocessed data file', default=None)
 parser.add_argument('--num_process', type=int, help='Number of process that processing graph parse', default=-1)
+parser.add_argument('--base_path', type=str, help='Base path to running directory', default='./')
 
 args = parser.parse_args()
 
@@ -56,77 +61,8 @@ class EGES(nn.Module):
 
         Node_embed = self.NodeEmbedding(node)
 
-def Make_pairs(nodes, G, l, k, ns):
-
-    pairs = []
-    labels = []
-
-    node_num = [int(n) for n in nodes]
-    node_num.sort()
-
-    # To sampling negatives, we need to get not connected nodes
-    # Calculating them is slow when using setdiff1d
-    # So make mask and do bit-wise compare
-
-    max_nodelen = node_num[-1]
-    mask = np.zeros((max_nodelen + 1,))
-    mask[node_num] = 1
-
-    # Make mask to bool type
-    mask = mask > 0
-
-    arr = np.array(range(max_nodelen + 1))
-
-    for v in nodes:
-        # start = time.time()
-        walks = random_walk(G, l, v)
-        # print(f"afte random_walk : {time.time() - start}")
-        # start = time.time()
-
-        for i, walk_node in enumerate(walks):
-            iter = 0
-            for j in range(max(0, i - k), min(l - 1, i + k) + 1):
-                if i == j: continue
-
-                u = walks[j]
-                pairs.append((walk_node, u))
-                labels.append(1)
-                iter += 1
-
-            # start = time.time()
-
-            neighbors = [int(n) for n in G.neighbors(walk_node)] + [int(walk_node)]
-            mask[neighbors] = False
-
-            negative = arr[mask]
-
-            # print(len(nodes))
-            # print(len(negative))
-            # print(neighbors)
-
-            # Restore
-            mask[neighbors] = True
-
-            # In paper, Do sampling in each loops but that is time consuming
-            # So in my code, do sampling at once
-
-            # np.choice is slow
-            # negative_samples = np.random.choice(list(negative), ns * iter)
-
-            idx = np.random.randint(len(negative), size=ns * iter)
-            negative_samples = [negative[i] for i in idx]
-
-            for neg in negative_samples:
-                pairs.append((walk_node, neg))
-                labels.append(0)
-
-            # print(f"afte one node process : {time.time() - start}")
-            # start = time.time()
-
-    return pairs, labels
-
 class GraphDataset(Dataset):
-    def __init__(self, G, w, l, k, ns, side_info):
+    def __init__(self, G, w, l, k, ns, side_info, pair_path=None):
         """
         EGES Dataset created by Graph
 
@@ -151,8 +87,13 @@ class GraphDataset(Dataset):
 
         self.G = G
         self.side_info = {}
-        self.pairs = []
-        self.labels = []
+        self.nodes = CompactList(1000000, dtype=np.int32)
+        self.contexts = CompactList(1000000, dtype=np.int32)
+        self.labels = CompactList(1000000, dtype=np.int8)
+        self.w = w
+        self.l = l
+        self.k = k
+        self.ns = ns
 
         tokenizer = KoBertTokenizer.from_pretrained('monologg/kobert')
 
@@ -160,7 +101,7 @@ class GraphDataset(Dataset):
         padding = [1 for _ in range(args.max_length)]
         pad_mask = [0 for _ in range(args.max_length)]
 
-        for k, v in side_info.items():
+        for k, v in tqdm(side_info.items()):
             assert len(v) <= args.max_category
 
             dict = {"input_ids": [], "attention_mask": []}
@@ -182,95 +123,106 @@ class GraphDataset(Dataset):
             dict["attention_mask"] = attention_masks
 
             self.side_info[k] = dict
-        #
 
-        if args.num_process == -1:
-            proc_num = mp.cpu_count() - 1
+
+        if pair_path is None or (not os.path.exists(pair_path)):
+            self.process_pairs()
+            self.save(pair_path)
         else:
-            proc_num = args.num_process
+            self.load(pair_path)
 
-        nodes = [n for n in self.G.nodes] * w
+    def process_pairs(self):
+        process_bar = tqdm(total=len(self.G.nodes) * self.w)
+        nodes = [int(n) for n in self.G.nodes]
+        nodes.sort()
 
-        result = parmap.map(Make_pairs, np.array_split(nodes, proc_num), self.G, l, k, ns, pm_pbar=True, pm_processes=proc_num)
+        # To sampling negatives, we need to get not connected nodes
+        # Calculating them is slow when using setdiff1d
+        # So make mask and do bit-wise compare
 
-        # process_bar = tqdm(total=len(G.nodes) * w)
-        # nodes = [int(n) for n in self.G.nodes]
-        # nodes.sort()
-        #
-        # # To sampling negatives, we need to get not connected nodes
-        # # Calculating them is slow when using setdiff1d
-        # # So make mask and do bit-wise compare
-        #
-        # max_nodelen = nodes[-1]
-        # mask = np.zeros((max_nodelen + 1,))
-        # mask[nodes] = 1
-        #
-        # # Make mask to bool type
-        # mask = mask > 0
-        #
-        # arr = np.array(range(max_nodelen + 1))
-        #
-        # for _ in range(w):
-        #     for v in self.G.nodes:
-        #         # start = time.time()
-        #         walks = random_walk(self.G, l, v)
-        #         # print(f"afte random_walk : {time.time() - start}")
-        #         # start = time.time()
-        #
-        #         for i, walk_node in enumerate(walks):
-        #             iter = 0
-        #             for j in range(max(0, i - k), min(l - 1, i + k) + 1):
-        #                 if i == j: continue
-        #
-        #                 u = walks[j]
-        #                 self.pairs.append((walk_node, u))
-        #                 self.labels.append(1)
-        #                 iter += 1
-        #
-        #             # start = time.time()
-        #
-        #             neighbors = [int(n) for n in self.G.neighbors(walk_node)] + [int(walk_node)]
-        #             mask[neighbors] = False
-        #
-        #             negative = arr[mask]
-        #
-        #             # print(len(nodes))
-        #             # print(len(negative))
-        #             # print(neighbors)
-        #
-        #             # Restore
-        #             mask[neighbors] = True
-        #
-        #             # In paper, Do sampling in each loops but that is time consuming
-        #             # So in my code, do sampling at once
-        #
-        #             # np.choice is slow
-        #             # negative_samples = np.random.choice(list(negative), ns * iter)
-        #
-        #             idx = np.random.randint(len(negative), size=ns * iter)
-        #             negative_samples = [negative[i] for i in idx]
-        #
-        #             for neg in negative_samples:
-        #                 self.pairs.append((walk_node, neg))
-        #                 self.labels.append(0)
-        #
-        #             # print(f"afte one node process : {time.time() - start}")
-        #             # start = time.time()
-        #
-        #         process_bar.update(1)
-        # process_bar.close()
+        max_nodelen = nodes[-1]
+        mask = np.zeros((max_nodelen + 1,))
+        mask[nodes] = 1
+
+        # Make mask to bool type
+        mask = mask > 0
+
+        arr = np.array(range(max_nodelen + 1))
+
+        for _ in range(self.w):
+            for v in nodes:
+                walks = random_walk(self.G, self.l, v)
+
+                for i, walk_node in enumerate(walks):
+                    iter = 0
+                    for j in range(max(0, i - self.k), min(self.l - 1, i + self.k) + 1):
+                        if i == j: continue
+
+                        u = walks[j]
+                        self.nodes.append(walk_node)
+                        self.contexts.append(u)
+                        self.labels.append(1)
+                        iter += 1
+
+                    neighbors = [int(n) for n in self.G.neighbors(walk_node)] + [int(walk_node)]
+                    mask[neighbors] = False
+
+                    negative = arr[mask]
+
+                    # Restore
+                    mask[neighbors] = True
+
+                    # In paper, Do sampling in each loops but that is time consuming
+                    # So in my code, do sampling at once
+
+                    # np.choice is slow
+                    # negative_samples = np.random.choice(list(negative), ns * iter)
+
+                    idx = np.random.randint(len(negative), size=self.ns * iter)
+                    negative_samples = [negative[i] for i in idx]
+
+                    for neg in negative_samples:
+                        self.nodes.append(walk_node)
+                        self.contexts.append(neg)
+                        self.labels.append(0)
+
+                process_bar.update(1)
+        process_bar.close()
 
     def __getitem__(self, i):
-        node, context_node = self.pairs[i]
+        node, context_node = self.nodes[i], self.contexts[i]
         side_info = self.side_info[node]
+        # side_info = None
 
-        return node, context_node, side_info, self.labels[i]
+        return node, context_node, self.labels[i], side_info
 
     def __len__(self):
-        return len(self.pairs)
+        return len(self.nodes)
 
-    def save_data(self, path):
-        pass
+    def load(self, path):
+        """
+        load pairs, labels data from txt file
+        :param path: data txt file
+        """
+        with open(os.path.join(path), 'r') as f:
+            for line in tqdm(f, total=122718024):
+                line = line.strip()
+                node, context, label = line.split(' ')
+                self.nodes.append(int(node))
+                self.contexts.append(int(context))
+                self.labels.append(int(label))
+
+                # self.contexts.append(int(context))
+                # self.labels.append(int(label))
+
+    def save(self, path):
+        """
+        Save pairs, labels data to txt file
+        :param path: output txt file
+        """
+        with open(os.path.join(path), 'w') as f:
+            for i in range(len(self)):
+                f.write('%s %s %s\n' % (self[i]))
 
 def Make_Graph(docs):
     """
@@ -295,28 +247,37 @@ def Make_Graph(docs):
             if (node == to) : continue
             G.add_edges_from([(node, to)])
 
-    nx.write_edgelist(G, args.graph_path)
+    nx.write_edgelist(G, args.base_path + args.graph_path)
 
     return G
 
 def main():
-    docs = pd.read_csv(args.info_path)
+    docs = pd.read_csv(args.base_path + args.info_path)
     docs['category'] = docs.category.apply(eval)
 
     side_info = dict(zip(docs.id, docs.category))
 
-    if not os.path.exists(args.graph_path):
-        print("Graph file not exists! process pairs to graph...")
-        G = Make_Graph(docs)
-    else:
-        G = nx.read_edgelist(args.graph_path)
+    G = None
 
-    print(f"Nuber of nodes : {len(G.nodes)}")
-    print(f"Nuber of edges : {len(G.edges)}")
+    if not args.pass_graph:
+        if not os.path.exists(args.base_path + args.graph_path):
+            print("Graph file not exists! process pairs to graph...")
+            G = Make_Graph(docs)
+        else:
+            G = nx.read_edgelist(args.base_path + args.graph_path)
 
-    dataset = GraphDataset(G, 2, 10, 2, 2, side_info)
+        print(f"Nuber of nodes : {len(G.nodes)}")
+        print(f"Nuber of edges : {len(G.edges)}")
 
+    dataset = GraphDataset(G, 2, 10, 2, 2, side_info, args.base_path + args.data_path)
 
+    data = DataLoader(dataset, batch_size=4)
+
+    for d in data:
+        print(d)
 
 if __name__ == '__main__':
+    if args.base_path == './':
+        args.base_path = '../'
+
     main()

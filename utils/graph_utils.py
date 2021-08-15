@@ -6,7 +6,7 @@ def random_walk(graph, walk_length, start_node):
     Parameters
     --------------
 
-    graph : Graph
+    graph : Graph or Dict(node, list(node))
       networkx Graph to do random walk
     walk_length : int
       length of random walks
@@ -14,10 +14,15 @@ def random_walk(graph, walk_length, start_node):
       starting point of random walk
     """
 
+    if isinstance(graph, dict):
+        get_neigh = lambda x : graph[x]
+    else:
+        get_neigh = lambda x : graph.neighbors(x)
+
     walks = [start_node]
 
     for _ in range(walk_length):
-        adj_node = [n for n in graph.neighbors(walks[-1])]
+        adj_node = [n for n in get_neigh(walks[-1])]
 
         if len(adj_node) == 0:
             # If no edges from node go back
@@ -25,6 +30,7 @@ def random_walk(graph, walk_length, start_node):
                 # If node is starting point, random walk fails
                 return None
             walks.append(walks[-2])
+            continue
 
         idx = np.random.randint(len(adj_node))
         walks.append(adj_node[idx])
@@ -32,13 +38,43 @@ def random_walk(graph, walk_length, start_node):
 
     return walks
 
+class CompactList:
+    def __init__(self, blocksize, dtype=np.int32):
+        """
+        Using list allocate memory much more than numpy array.
+        But numpy array is not dynamic and use it with append is slow.
+        So make list block and if elements exceed block size, append it to np array
+        :param blocksize: Size of list block
+        """
+        self.blocksize = blocksize
+        self.list = []
+        self.array = np.array([], dtype=dtype)
+        self.block_idx = 0
+
+    def __len__(self):
+        return len(self.list) + len(self.array)
+
+    def __getitem__(self, idx):
+        if idx >= self.block_idx * self.blocksize:
+            idx -= self.block_idx * self.blocksize
+
+            return self.list[idx]
+
+        return self.array[idx]
+
+    def append(self, data):
+        self.list.append(data)
+
+        if len(self.list) >= self.blocksize:
+            self.block_idx += 1
+            self.array = np.append(self.array, self.list)
+            self.list = []
+
 if __name__ == '__main__':
-    G = nx.DiGraph()
-    G.add_edges_from([
-        ('a', 'b'), ('b', 'c'), ('a', 'c'), ('c', 'x'),
-        ('x', 'y'), ('y', 'z'), ('x', 'z'), ('a', 'a')
-    ])
+    compact = CompactList(10)
 
-    print([n for n in nx.neighbors(G, 'a')])
+    for i in range(5):
+        compact.append(i)
 
-    print([n for n in G.nodes] * 2)
+    for i in range(5):
+        print(compact[i])
