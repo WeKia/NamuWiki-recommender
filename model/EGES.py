@@ -19,47 +19,77 @@ from transformers import DistilBertModel
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--max_length', type=int, help='Maximum length of each categories', default=64)
-parser.add_argument('--max_category', type=int, help='Maximum number of categories', default=45)
+parser.add_argument('--max_category', type=int, help='Maximum number of categories', default=16)
 parser.add_argument('--info_path', type=str, help='Path to documents information csv file')
 parser.add_argument('--graph_path', type=str, help='Path to graph file if not exist make new file', default='data/Graph.gz')
 parser.add_argument('--pass_graph', action='store_true', default=False, help='Pass loading graph. Use it if data already processed')
+parser.add_argument('--test', action='store_true', default=False, help='Try load only 1000 nodes')
 parser.add_argument('--data_path', type=str, help='Path to preprocessed data file', default=None)
 parser.add_argument('--num_process', type=int, help='Number of process that processing graph parse', default=-1)
 parser.add_argument('--base_path', type=str, help='Base path to running directory', default='./')
+parser.add_argument('--epochs', type=int, help='Epochs for learning', default=2)
+parser.add_argument('--lr', type=float, help="Learning rate for model", default=0.0005)
+parser.add_argument('--max_grad_norm', type=float, help='max_grad_norm for model', default=0.5)
+parser.add_argument('--log_interval', type=int, help='Log interval for model training', default=1000)
+parser.add_argument('--device', type=str, help='Device for training model', default='cpu')
+
 
 args = parser.parse_args()
 
 
 class EGES(nn.Module):
-    def __init__(self, G, embed_dim):
-        self.G = G
-
-        self.NodeEmbedding = nn.Embedding(len(self.G.nodes), embed_dim)
-        self.tokenizer = KoBertTokenizer.from_pretrained('monologg/kobert')
+    def __init__(self, node_len, embed_dim, fine_tune=False):
+        super(EGES, self).__init__()
+        self.NodeEmbedding = nn.Embedding(node_len, embed_dim)
         self.SideEmbedding = DistilBertModel.from_pretrained('monologg/distilkobert')
+        if not fine_tune:
+            for param in self.SideEmbedding.parameters():
+                param.require_grad = False
 
-        self.attention = torch.rand((len(G.nodes), 2), requires_grad=True)
+        self.attention = torch.nn.Parameter(torch.rand((node_len, 2)))
 
     def forward(self, node, side_info, context_node):
         """
         param: node, Tensor,  [batch_size, 1]
-        param: side_info, Tensor, [batch_size, ,]
+        param: side_info, Tensor, [batch_size, max_category, max_length]
         param: context_node, Tensor, [batch_size, 1]
         """
 
-        H_node = self.embed(node, side_info)
-        context_embed = self.NodeEmbedding(context_node)
+        H = self.embed(node, side_info) #[batch_size, embed]
+        context_embed = self.NodeEmbedding(context_node) #[batch_size, embed]
 
+        output = torch.bmm(H.unsqueeze(1), context_embed.unsqueeze(2)).squeeze() # batch-wise dot
 
-        pass
+        return output
 
     def embed(self, node, side_info):
         """
         param: node, Tensor,  [batch_size, 1]
-        param: side_info, Tensor, [batch_size, pad_num, ]
+        param: side_info, Tensor, [batch_size, max_category, max_length]
         """
 
-        Node_embed = self.NodeEmbedding(node)
+        batch_size = node.shape[0]
+
+        Node_embed = self.NodeEmbedding(node) # [batch_size, embed_dim]
+        attention = torch.exp(self.attention[node]) # [batch_size, 2], exp(a_j)
+
+        input_ids = side_info['input_ids'].reshape(-1, args.max_length).long() # [batch_size * max_category, 1, max_length]
+        attention_mask = side_info['attention_mask'].reshape(-1, args.max_length).long() # [batch_size * max_category, 1, max_length]
+
+        side_embed = self.SideEmbedding(input_ids=input_ids, attention_mask=attention_mask)[0][:, 0]
+        side_embed = side_embed.reshape(batch_size, args.max_category, -1) # [batch_size, max_category, embed]
+
+        # remove Nan
+        is_nan = torch.isnan(side_embed)
+        side_embed[is_nan] = 0
+
+        # Calculate Mean excluding nan values, Same with nanmean function in pytorch 1.9
+        side_mean = torch.sum(side_embed, dim=1) / (~is_nan.all(dim=2)).float().sum(dim=1).unsqueeze(1)  # [batch_size, embed]
+
+        embed = torch.cat([Node_embed.unsqueeze(1), side_mean.unsqueeze(1)], dim=1) #[batch_size, 2, embed]
+        H = torch.bmm(attention.unsqueeze(1), embed).squeeze(1) / attention.sum(dim=1).unsqueeze(1)
+
+        return H
 
 class GraphDataset(Dataset):
     def __init__(self, G, w, l, k, ns, side_info, pair_path=None):
@@ -98,20 +128,22 @@ class GraphDataset(Dataset):
         tokenizer = KoBertTokenizer.from_pretrained('monologg/kobert')
 
         # To use array, every side informations must be same shape.
-        padding = [1 for _ in range(args.max_length)]
-        pad_mask = [0 for _ in range(args.max_length)]
+        padding = np.ones((1, args.max_length), dtype=np.int8)
+        pad_mask = np.zeros((1, args.max_length), dtype=np.int8)
 
         for k, v in tqdm(side_info.items()):
-            assert len(v) <= args.max_category
-
             dict = {"input_ids": [], "attention_mask": []}
 
             input_ids = []
             attention_masks = []
 
-            for category in v:
-                token = tokenizer(category, padding='max_length', max_length=args.max_length, truncation=True)
+            if len(v) > args.max_category:
+                v = v[:args.max_category]
 
+            for category in v:
+                token = tokenizer(category, padding='max_length', max_length=args.max_length, truncation=True, return_tensors='np')
+
+                # print(token)
                 input_ids.append(token["input_ids"])
                 attention_masks.append(token["attention_mask"])
 
@@ -119,13 +151,14 @@ class GraphDataset(Dataset):
                 input_ids.append(padding)
                 attention_masks.append(pad_mask)
 
-            dict["input_ids"] = input_ids
-            dict["attention_mask"] = attention_masks
+            dict["input_ids"] = np.concatenate(input_ids, axis=0)
+            dict["attention_mask"] = np.concatenate(attention_masks, axis=0)
 
             self.side_info[k] = dict
 
 
         if pair_path is None or (not os.path.exists(pair_path)):
+            print("Preprocessed pair data not found!")
             self.process_pairs()
             self.save(pair_path)
         else:
@@ -255,9 +288,8 @@ def main():
     docs = pd.read_csv(args.base_path + args.info_path)
     docs['category'] = docs.category.apply(eval)
 
-    side_info = dict(zip(docs.id, docs.category))
-
     G = None
+    node_len = 0
 
     if not args.pass_graph:
         if not os.path.exists(args.base_path + args.graph_path):
@@ -266,18 +298,63 @@ def main():
         else:
             G = nx.read_edgelist(args.base_path + args.graph_path)
 
-        print(f"Nuber of nodes : {len(G.nodes)}")
+        node_len = len(G.nodes)
+        print(f"Nuber of nodes : {node_len}")
         print(f"Nuber of edges : {len(G.edges)}")
+
+    if args.test:
+        if G is not None:
+            nodes = [n for n in G.nodes]
+            nodes.sort(key=lambda x : int(x))
+
+            G = nx.subgraph(G, nodes[:1000])
+
+        docs = docs[docs['id'] < 1000]
+
+        print(len(docs))
+        node_len = 1000
+
+    device = args.device
+
+    side_info = dict(zip(docs.id, docs.category))
 
     dataset = GraphDataset(G, 2, 10, 2, 2, side_info, args.base_path + args.data_path)
 
-    data = DataLoader(dataset, batch_size=4)
+    model = EGES(node_len, 768)
+    model.to(device)
 
-    for d in data:
-        print(d)
+    dataloader = DataLoader(dataset, batch_size=4)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    loss_fn = nn.BCEWithLogitsLoss()
+
+    for epoch in range(args.epochs):
+        model.train()
+        i = 0
+        for nodes, contexts, labels, infos in tqdm(dataloader):
+            nodes = nodes.to(device)
+            contexts = contexts.to(device)
+            labels = labels.to(device).float()
+            infos['input_ids'] = infos['input_ids'].to(device)
+            infos['attention_mask'] = infos['attention_mask'].to(device)
+
+            embed = model(nodes, infos, contexts)
+
+            optimizer.zero_grad()
+
+            loss = loss_fn(embed, labels)
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
+            optimizer.step()
+
+            i += 1
+            if (i % args.log_interval) == 0:
+                print(f"Epoch {epoch} train loss {loss.data.cpu()}")
 
 if __name__ == '__main__':
     if args.base_path == './':
         args.base_path = '../'
+
 
     main()
