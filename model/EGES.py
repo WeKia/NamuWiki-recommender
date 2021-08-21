@@ -14,8 +14,7 @@ from pympler.asizeof import asizeof
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from utils.graph_utils import random_walk, CompactList
-from utils.tokenization_kobert import KoBertTokenizer
-from transformers import DistilBertModel
+from transformers import ElectraModel, ElectraTokenizer
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--max_length', type=int, help='Maximum length of each categories', default=64)
@@ -32,7 +31,7 @@ parser.add_argument('--lr', type=float, help="Learning rate for model", default=
 parser.add_argument('--max_grad_norm', type=float, help='max_grad_norm for model', default=0.5)
 parser.add_argument('--log_interval', type=int, help='Log interval for model training', default=1000)
 parser.add_argument('--device', type=str, help='Device for training model', default='cpu')
-
+parser.add_argument('--output', type=str, help='Output path for embedding vectors', default='embed.npy')
 
 args = parser.parse_args()
 
@@ -41,10 +40,10 @@ class EGES(nn.Module):
     def __init__(self, node_len, embed_dim, fine_tune=False):
         super(EGES, self).__init__()
         self.NodeEmbedding = nn.Embedding(node_len, embed_dim)
-        self.SideEmbedding = DistilBertModel.from_pretrained('monologg/distilkobert')
+        self.SideEmbedding = ElectraModel.from_pretrained("monologg/koelectra-small-v3-discriminator")
         if not fine_tune:
             for param in self.SideEmbedding.parameters():
-                param.require_grad = False
+                param.requires_grad = False
 
         self.attention = torch.nn.Parameter(torch.rand((node_len, 2)))
 
@@ -80,16 +79,21 @@ class EGES(nn.Module):
         side_embed = side_embed.reshape(batch_size, args.max_category, -1) # [batch_size, max_category, embed]
 
         # remove Nan
-        is_nan = torch.isnan(side_embed)
-        side_embed[is_nan] = 0
+        is_nan = ~(attention_mask.reshape(batch_size, max_category, -1).bool().any(dim=2))
+        side_embed =  torch.masked_fill(side_embed, torch.isnan(side_embed), 0)
 
         # Calculate Mean excluding nan values, Same with nanmean function in pytorch 1.9
-        side_mean = torch.sum(side_embed, dim=1) / (~is_nan.all(dim=2)).float().sum(dim=1).unsqueeze(1)  # [batch_size, embed]
+        side_mean = torch.sum(side_embed, dim=1) / (~is_nan).sum(dim=1).unsqueeze(1)  # [batch_size, embed]
 
         embed = torch.cat([Node_embed.unsqueeze(1), side_mean.unsqueeze(1)], dim=1) #[batch_size, 2, embed]
         H = torch.bmm(attention.unsqueeze(1), embed).squeeze(1) / attention.sum(dim=1).unsqueeze(1)
 
         return H
+
+    def save(self, nodes, infos):
+        for i in nodes:
+            self.embed(i, infos[i])
+
 
 class GraphDataset(Dataset):
     def __init__(self, G, w, l, k, ns, side_info, pair_path=None):
@@ -124,8 +128,9 @@ class GraphDataset(Dataset):
         self.l = l
         self.k = k
         self.ns = ns
+        self.node2idx = {}
 
-        tokenizer = KoBertTokenizer.from_pretrained('monologg/kobert')
+        tokenizer = ElectraTokenizer.from_pretrained('monologg/koelectra-base-v3-discriminator')
 
         # To use array, every side informations must be same shape.
         padding = np.ones((1, args.max_length), dtype=np.int8)
@@ -168,6 +173,8 @@ class GraphDataset(Dataset):
         process_bar = tqdm(total=len(self.G.nodes) * self.w)
         nodes = [int(n) for n in self.G.nodes]
         nodes.sort()
+
+        self.node2idx = {n: i for i, n in enumerate(nodes)}
 
         # To sampling negatives, we need to get not connected nodes
         # Calculating them is slow when using setdiff1d
@@ -237,6 +244,8 @@ class GraphDataset(Dataset):
         load pairs, labels data from txt file
         :param path: data txt file
         """
+
+        nodes = set()
         with open(os.path.join(path), 'r') as f:
             for line in tqdm(f, total=122718024):
                 line = line.strip()
@@ -247,6 +256,12 @@ class GraphDataset(Dataset):
 
                 # self.contexts.append(int(context))
                 # self.labels.append(int(label))
+
+                nodes.update([int(node), int(context)])
+        nodes = list(nodes)
+        nodes.sort()
+
+        self.node2idx = {n: i for i, n in enumerate(nodes)}
 
     def save(self, path):
         """
@@ -284,6 +299,43 @@ def Make_Graph(docs):
 
     return G
 
+class EmbeddingDataset(Dataset):
+  def __init__(self, nodes, side_info):
+    self.side_info = side_info
+    self.nodes = nodes
+
+  def __getitem__(self, idx):
+    node = self.nodes[idx]
+    info = self.side_info[node]
+
+    return node, info
+
+  def __len__(self):
+    return len(self.nodes)
+
+def Save_Embed(model, nodes, side_info):
+    embed_data = EmbeddingDataset(nodes, side_info)
+
+    embedLoader = DataLoader(embed_data, batch_size=512)
+
+    embedVec = None
+
+    model.eval()
+    for nodes, infos in tqdm(embedLoader):
+        nodes = nodes.to(args.device)
+        infos['input_ids'] = infos['input_ids'].to(args.device)
+        infos['attention_mask'] = infos['attention_mask'].to(args.device)
+
+        embed = model.embed(nodes, infos).data.cpu().numpy()
+
+        if embedVec is None:
+            embedVec = embed
+        else:
+            embedVec = np.concatenate([embedVec, embed], axis=0)
+
+    with open(args.base_path + args.output, 'wb') as f:
+        np.save(f, embedVec)
+
 def main():
     docs = pd.read_csv(args.base_path + args.info_path)
     docs['category'] = docs.category.apply(eval)
@@ -320,10 +372,10 @@ def main():
 
     dataset = GraphDataset(G, 2, 10, 2, 2, side_info, args.base_path + args.data_path)
 
-    model = EGES(node_len, 768)
+    model = EGES(node_len, 256)
     model.to(device)
 
-    dataloader = DataLoader(dataset, batch_size=4)
+    dataloader = DataLoader(dataset, batch_size=128)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_fn = nn.BCEWithLogitsLoss()
@@ -351,6 +403,15 @@ def main():
             i += 1
             if (i % args.log_interval) == 0:
                 print(f"Epoch {epoch} train loss {loss.data.cpu()}")
+
+
+    nodes = None
+    if args.test:
+        nodes = range(1000)
+    else:
+        nodes = dataset.nodes
+
+    Save_Embed(model, nodes, dataset.side_info)
 
 if __name__ == '__main__':
     if args.base_path == './':
