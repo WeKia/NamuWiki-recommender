@@ -10,7 +10,6 @@ import os
 import time
 import torch
 import torch.nn as nn
-from pympler.asizeof import asizeof
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from utils.graph_utils import random_walk, CompactList
