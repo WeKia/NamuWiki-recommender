@@ -252,7 +252,6 @@ def main(args):
     contributors = pd.read_csv(args.contributor_path)
     docs = pd.read_csv(args.info_path)
 
-
     # restrict mimum and maximum
     contributor_count = contributors.groupby('title').count()
     restricted_docs = contributor_count[contributor_count['contributors'] >= args.cont_min].index.tolist()
@@ -322,24 +321,24 @@ def main(args):
     valid_train_data, valid_test_data = split_train_test_proportion(valid_data)
     test_train_data, test_test_data = split_train_test_proportion(test_data)
 
-    def numerize(tp):
-        uid = list(map(lambda x: cont2id[x], tp['contributors']))
-        sid = list(map(lambda x: doc2id[x], tp['title']))
-        return pd.DataFrame(data={'uid': uid, 'sid': sid}, columns=['uid', 'sid'])
+    # def numerize(tp):
+    #     uid = list(map(lambda x: cont2id[x], tp['contributors']))
+    #     sid = list(map(lambda x: doc2id[x], tp['title']))
+    #     return pd.DataFrame(data={'uid': uid, 'sid': sid}, columns=['uid', 'sid'])
 
-    train_data = numerize(train_data)
-
-    valid_train_data = numerize(valid_train_data)
-    valid_test_data = numerize(valid_test_data)
-
-    test_train_data = numerize(test_train_data)
-    test_test_data = numerize(test_test_data)
-
-    train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
-    valid_train_data.to_csv('validation_tr.csv', index=False, encoding='utf-8-sig')
-    valid_test_data.to_csv('validation_te.csv', index=False, encoding='utf-8-sig')
-    test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
-    test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
+    # train_data = numerize(train_data)
+    #
+    # valid_train_data = numerize(valid_train_data)
+    # valid_test_data = numerize(valid_test_data)
+    #
+    # test_train_data = numerize(test_train_data)
+    # test_test_data = numerize(test_test_data)
+    #
+    # train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
+    # valid_train_data.to_csv('validation_tr.csv', index=False, encoding='utf-8-sig')
+    # valid_test_data.to_csv('validation_te.csv', index=False, encoding='utf-8-sig')
+    # test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
+    # test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
 
     #
     # train_data['contributors'] = train_data.contributors.apply(lambda x : cont2id[x])
@@ -355,11 +354,11 @@ def main(args):
     # test_test_data['contributors'] = test_test_data.contributors.apply(lambda x: cont2id[x])
     # test_train_data['title'] = test_train_data.title.apply(lambda x: doc2id[x])
     #
-    # train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
-    # valid_train_data.to_csv('valid_tr.csv', index=False, encoding='utf-8-sig')
-    # valid_test_data.to_csv('valid_te.csv', index=False, encoding='utf-8-sig')
-    # test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
-    # test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
+    train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
+    valid_train_data.to_csv('valid_tr.csv', index=False, encoding='utf-8-sig')
+    valid_test_data.to_csv('valid_te.csv', index=False, encoding='utf-8-sig')
+    test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
+    test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
 
     # with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
     #     for did in unique_did:

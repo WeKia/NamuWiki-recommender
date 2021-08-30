@@ -78,7 +78,7 @@ class EGES(nn.Module):
         side_embed = side_embed.reshape(batch_size, args.max_category, -1) # [batch_size, max_category, embed]
 
         # remove Nan
-        is_nan = ~(attention_mask.reshape(batch_size, max_category, -1).bool().any(dim=2))
+        is_nan = ~(attention_mask.reshape(batch_size, args.max_category, -1).bool().any(dim=2))
         side_embed =  torch.masked_fill(side_embed, torch.isnan(side_embed), 0)
 
         # Calculate Mean excluding nan values, Same with nanmean function in pytorch 1.9
