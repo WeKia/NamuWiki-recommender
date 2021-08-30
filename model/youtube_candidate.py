@@ -183,6 +183,9 @@ class TestingData:
         """
         super(TestingData, self).__init__()
 
+        #indexing document id to numpy idx
+        idx_dict = {doc: i for i, doc in enumerate(text_dict.keys())}
+
         self.embeds = []
         self.target = []
         self.history = []
@@ -197,8 +200,8 @@ class TestingData:
             self.embeds.append(embed)
             assert len(docs) <= max_hist
             assert len(target_dict[user]) <= max_target
-            self.history.append(docs + [-1 for _ in range(max_hist - len(docs))])
-            self.target.append(target_dict[user] + [-1 for _ in range(max_target - len(target_dict[user]))])
+            self.history.append([idx_dict[doc] for doc in docs ] + [-1 for _ in range(max_hist - len(docs))])
+            self.target.append([idx_dict[doc] for doc in target_dict[user]] + [-1 for _ in range(max_target - len(target_dict[user]))])
 
     def __getitem__(self, idx):
         return self.embeds[idx], np.array(self.target[idx]), np.array(self.history[idx])
@@ -335,7 +338,7 @@ def TrainModel(model, dataloader, optimizer, loss_fn, epochs=5,
                 print(f"Epoch {epoch} train loss {loss.data.cpu()}")
                 print(f"Epoch {epoch} f1 score {f1score}")
         
-def TestModel(model, TestDataLoader, doc_embeds, device='cuda'):
+def TestModel(model, TestDataLoader, doc_embeds,device='cuda'):
     """
     Testing model by computing recommedendation
 
@@ -346,14 +349,47 @@ def TestModel(model, TestDataLoader, doc_embeds, device='cuda'):
     """
     for embed, target, history in tqdm(TestDataLoader):
         embed = embed.to(device)
-        target = target.to(device)
-        history = history.to(device)
+
+        cont_docs = torch.cat([target, history], dim=1).long().cpu()
+
+        batch_size = embed.size(0)
+        labels = torch.zeros((batch_size, doc_embeds.size(0))).cpu()
+
+        label_list = []
+
+        for label, docs in zip(labels.unbind(), cont_docs.unbind()):
+            label[torch.masked_select(docs, docs != -1)] = 1
+            label_list.append(label.cpu())
+
+        labels = torch.vstack(label_list).long()
 
         user_embed = model.user_embed(embed)
 
-        item_scores = torch.matmul(user_embed, doc_embeds.T)
+        item_scores = torch.matmul(user_embed, doc_embeds.T).cpu()
 
-        top_items = torch.argsort(item_scores, dim=1)[:, :5]
+        sig = torch.sigmoid(item_scores)
+        pred = torch.zeros_like(labels)
+        pred[sig >= 0.5] = 1
+
+        f1 = 0
+
+        for true, hat in zip(labels.unbind(), pred.unbind()):
+            f1 += f1_score(true, hat)
+
+        print(f1 / batch_size)
+
+        top_items = torch.argsort(item_scores, dim=1)[:, :10].cpu().numpy()
+        target = target.cpu().numpy()
+
+        topk_acc = 0
+
+        for item, t in zip(top_items, target):
+            print(item)
+            intersect = np.intersect1d(item, t)
+
+            topk_acc += len(intersect) / 10
+
+        print(topk_acc / batch_size)
 
     pass
 
@@ -403,6 +439,7 @@ def main():
     validLoader = DataLoader(validData, batch_size=256)
 
     doc_embeds = torch.tensor(list(text_dict.values())).to(args.device)
+
     TestModel(model, validLoader, doc_embeds)
 
     pass
