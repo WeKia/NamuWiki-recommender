@@ -1,3 +1,2 @@
 # NamuWiki-recommender
-
-This is project for extension that recommends NamuWiki Documents based on users read docs
+나무위키 문서 추천 프로젝트입니다.
