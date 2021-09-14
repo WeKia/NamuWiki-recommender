@@ -1,8 +1,10 @@
 let recentView = {'titles' : []};
+let recDoc = {'titles' : []};
 
+let recDocEle;
 let recentViewEle;
 
-function AddSide() {
+function AddSide(title_txt , btn_txt, onclick, key) {
   let base = document.createElement('div');
   let title  = document.createElement('h5');
   let innerbox = document.createElement('div');
@@ -10,21 +12,17 @@ function AddSide() {
 
   base.id = 'recentView';
   base.className = 'c';
-  base.setAttribute('data-v-2cd3b089', '');
-  base.setAttribute('data-v-014f19d0', '');
+  base.className = 'basetable'
 
-  //title.className = 'tabletitle'
-  title.setAttribute('data-v-2cd3b089', '')
-  title.innerText = "최근 방문";
+  title.className = 'tabletitle'
+  title.innerText = title_txt;
 
-  //innerbox.className = 'innerbox';
-  innerbox.setAttribute('data-v-2cd3b089', '');
+  innerbox.className = 'innerbox';
   innerbox.id = 'RVinnerbox';
   
-  //tablebtn.className = 'tablebutton';
-  tablebtn.setAttribute('data-v-2cd3b089', '');
-  tablebtn.innerText = '[초기화]';
-  tablebtn.onclick = ResetRecentView;
+  tablebtn.className = 'tablebutton';
+  tablebtn.innerText = btn_txt;
+  tablebtn.onclick = onclick;
 
   base.appendChild(title);
   base.appendChild(innerbox);
@@ -32,7 +30,7 @@ function AddSide() {
 
   document.body.appendChild(base);
 
-  UpdateSide();
+  UpdateSide(base, key);
 
   return base;
 }
@@ -42,10 +40,14 @@ function ResetRecentView()
   chrome.storage.local.remove("recentView",function(){
       recentView = {'titles' : []};
    });
+
+  chrome.storage.local.remove("Recommend", function(){
+      recDoc = {'titles' : []};
+  });
 }
 
-function UpdateSide() {
-  let div = document.getElementById('RVinnerbox');
+function UpdateSide(Base, storage_key) {
+  let div = Base.getElementsByClassName('innerbox')[0];
 
   div.innerHTML = '';
 
@@ -54,7 +56,7 @@ function UpdateSide() {
     div.removeChild( div.firstChild );       
   }
 
-  chrome.storage.local.get("recentView", function(data){
+  chrome.storage.local.get(storage_key, function(data){
     if(data.recentView)
     {
       recentView =  data.recentView;
@@ -62,12 +64,27 @@ function UpdateSide() {
       for(var i=0; i < recentView.titles.length; i++) {
         let a = document.createElement('a');
   
-        //a.className = 'innerText';
-        a.setAttribute('data-v-2cd3b089', '');
-        a.setAttribute('class', '');
+        a.className = 'innertext';
   
         a.innerText = recentView.titles[i];
         a.href = '/w/' + encodeURI(recentView.titles[i]);
+  
+        div.appendChild(a);
+  
+      }
+    }
+
+    if(data.Recommend)
+    {
+      recDoc =  data.Recommend;
+
+      for(var i=0; i < recDoc.titles.length; i++) {
+        let a = document.createElement('a');
+  
+        a.className = 'innertext';
+  
+        a.innerText = recDoc.titles[i];
+        a.href = '/w/' + encodeURI(recDoc.titles[i]);
   
         div.appendChild(a);
   
@@ -78,7 +95,10 @@ function UpdateSide() {
 }
 
 chrome.storage.onChanged.addListener((change, namespace) => {
-  UpdateSide();
+  console.log("getChagned");
+
+  UpdateSide(recentViewEle, "recentView");
+  UpdateSide(recDocEle, "Recommend");
 });
 
 chrome.storage.local.get("recentView", function(data){
@@ -87,7 +107,17 @@ chrome.storage.local.get("recentView", function(data){
     recentView =  data.recentView;
   }
 
-  recentViewEle = AddSide();
+  recentViewEle = AddSide('최근 방문', '[초기화]', ResetRecentView, "recentView");
+
+});
+
+chrome.storage.local.get("Recommend", function(data){
+  if(data.Recommend)
+  {
+    recDoc =  data.Recommend;
+  }
+
+  recDocEle = AddSide('문서 추천', '추천 받기', Recommend, "Recommend");
 
 });
 
@@ -106,7 +136,7 @@ function listen(currentHref) {
 
       const docu_name =  decodeURIComponent(currentHref.split("namu.wiki/w/")[1].split('?')[0].split('#')[0]);
 
-      if (recentView.titles.indexOf(docu_name) == -1)
+      if ((recentView.titles.indexOf(docu_name) == -1) && (docu_name.substring(0, 3) != "분류:") )
       {
         recentView.titles.unshift(docu_name);
 
@@ -127,8 +157,9 @@ function listen(currentHref) {
 
 document.addEventListener("DOMContentLoaded", function(event) { 
   
-  let side = document.getElementById('tchika770b3753').parentElement;
+  let side = document.getElementsByTagName('aside')[0];
 
+  side.prepend(recDocEle);
   side.prepend(recentViewEle);
 
   listen(window.location.href);

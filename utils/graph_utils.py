@@ -1,5 +1,6 @@
-import networkx as nx
+import time
 import numpy as np
+from pympler import asizeof
 
 def random_walk(graph, walk_length, start_node):
     """
@@ -48,7 +49,8 @@ class CompactList:
         """
         self.blocksize = blocksize
         self.list = []
-        self.array = np.array([], dtype=dtype)
+        self.array = None
+        self.dtype= dtype
         self.block_idx = 0
 
     def __len__(self):
@@ -67,14 +69,20 @@ class CompactList:
 
         if len(self.list) >= self.blocksize:
             self.block_idx += 1
-            self.array = np.append(self.array, self.list)
+
+            if self.array is not None:
+                self.array = np.append(self.array, self.list, axis=0)
+            else:
+                self.array = np.array(self.list, dtype=self.dtype)
             self.list = []
 
 if __name__ == '__main__':
-    compact = CompactList(10)
+    st = time.time()
 
-    for i in range(5):
+    compact = CompactList(blocksize=4096)
+
+    for i in range(1000000):
         compact.append(i)
 
-    for i in range(5):
-        print(compact[i])
+    print(asizeof.asizeof(compact))
+    print(time.time() - st)

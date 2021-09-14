@@ -321,6 +321,8 @@ def main(args):
     valid_train_data, valid_test_data = split_train_test_proportion(valid_data)
     test_train_data, test_test_data = split_train_test_proportion(test_data)
 
+    docs = docs[docs['id'].isin(unique_did)]
+
     # def numerize(tp):
     #     uid = list(map(lambda x: cont2id[x], tp['contributors']))
     #     sid = list(map(lambda x: doc2id[x], tp['title']))
@@ -359,6 +361,8 @@ def main(args):
     valid_test_data.to_csv('valid_te.csv', index=False, encoding='utf-8-sig')
     test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
     test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
+
+    docs.to_csv('info_processed', index=False, encoding='utf-8-sig')
 
     # with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
     #     for did in unique_did:
