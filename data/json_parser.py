@@ -10,6 +10,7 @@ def get_parser():
     parser.add_argument('--json_path', type=str, help='Path for namu wiki dump json file')
     parser.add_argument('--output', type=str, default='json_parsed.csv',
                         help='Path for output file')
+    parser.add_argument('--no_limit', action='store_true', default=False, help='Not lmiit size of texts. If not true texts will limit to 512')
     parser.add_argument('--proc_num', type=int, help='Number of parsing processor default is -1 that is max core of cpu', default=-1)
 
     args = parser.parse_args()
@@ -17,12 +18,13 @@ def get_parser():
     return args
 
 class worker(mp.Process):
-    def __init__(self, dq, id, wq, rq):
+    def __init__(self, dq, id, wq, rq, is_limit):
         super(worker, self).__init__(daemon=True)
         self.wq = wq
         self.id = id
         self.dq = dq
         self.rq = rq
+        self.is_limit = is_limit
 
     def run(self):
         while True:
@@ -326,8 +328,11 @@ class worker(mp.Process):
                 while new_text.find("  ") >= 0:
                     new_text = new_text.replace('  ', ' ')
 
+                if self.is_limit:
+                    new_text = new_text[:512]
+
                 diction = {'title': data['title'],
-                           'text': new_text[:512],
+                           'text': new_text,
                            'category': [category],
                            'links': [link],
                            'contributors': [data['contributors']]}
@@ -367,7 +372,7 @@ def main(args):
     for i in range(process_num):
         data_queue = mp.Queue()
 
-        w = worker(data_queue, i, work_queue, result_queue)
+        w = worker(data_queue, i, work_queue, result_queue, not args.no_limit)
         w.start()
         pool.append(data_queue)
         work_queue.put(i)

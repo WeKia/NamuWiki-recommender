@@ -25,6 +25,7 @@ def get_parser():
     parser.add_argument('--cont_min', type=int, help='Restrict minimum number of contributors of document ', default=5)
     parser.add_argument('--val_ratio', type=float, default=0.1)
     parser.add_argument('--test_ratio', type=float, default=0.1)
+    parser.add_argument('--divide_tag', action='store_true', default=False, help='Divide tag(category) if there is / on tag')
 
     args = parser.parse_args()
 
@@ -229,6 +230,18 @@ def make_csv(args):
         csv['id'] = csv.title.apply(lambda x : doc2id[x])
         csv['links'] = csv.links.apply(lambda x : [doc2id[link] for link in x if doc2id.get(link)])
 
+    if args.divide_tag:
+        def divide_tag(x):
+            tags = []
+            for e in x:
+                tags += e.split('/')
+
+
+            return list(set(tags))
+
+        csv['category'] = csv.category.apply(lambda x : divide_tag(x))
+
+
     processed.to_csv(args.contributor_path, index=False, encoding='utf-8-sig')
 
     csv = csv.drop('contributors', axis=1)
@@ -323,39 +336,6 @@ def main(args):
 
     docs = docs[docs['id'].isin(unique_did)]
 
-    # def numerize(tp):
-    #     uid = list(map(lambda x: cont2id[x], tp['contributors']))
-    #     sid = list(map(lambda x: doc2id[x], tp['title']))
-    #     return pd.DataFrame(data={'uid': uid, 'sid': sid}, columns=['uid', 'sid'])
-
-    # train_data = numerize(train_data)
-    #
-    # valid_train_data = numerize(valid_train_data)
-    # valid_test_data = numerize(valid_test_data)
-    #
-    # test_train_data = numerize(test_train_data)
-    # test_test_data = numerize(test_test_data)
-    #
-    # train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
-    # valid_train_data.to_csv('validation_tr.csv', index=False, encoding='utf-8-sig')
-    # valid_test_data.to_csv('validation_te.csv', index=False, encoding='utf-8-sig')
-    # test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
-    # test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
-
-    #
-    # train_data['contributors'] = train_data.contributors.apply(lambda x : cont2id[x])
-    # train_data['title'] = train_data.title.apply(lambda x : doc2id[x])
-    #
-    # valid_train_data['contributors'] = valid_train_data.contributors.apply(lambda x : cont2id[x])
-    # valid_train_data['title'] = valid_train_data.title.apply(lambda x: doc2id[x])
-    # valid_test_data['contributors'] = valid_test_data.contributors.apply(lambda x : cont2id[x])
-    # valid_test_data['title'] = valid_test_data.title.apply(lambda x: doc2id[x])
-    #
-    # test_train_data['contributors'] = test_train_data.contributors.apply(lambda x: cont2id[x])
-    # test_train_data['title'] = test_train_data.title.apply(lambda x: doc2id[x])
-    # test_test_data['contributors'] = test_test_data.contributors.apply(lambda x: cont2id[x])
-    # test_train_data['title'] = test_train_data.title.apply(lambda x: doc2id[x])
-    #
     train_data.to_csv('train.csv', index=False, encoding='utf-8-sig')
     valid_train_data.to_csv('valid_tr.csv', index=False, encoding='utf-8-sig')
     valid_test_data.to_csv('valid_te.csv', index=False, encoding='utf-8-sig')

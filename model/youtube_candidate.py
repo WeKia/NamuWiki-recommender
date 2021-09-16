@@ -30,13 +30,6 @@ parser.add_argument('--model_path', type=str, help='Pretrained model path. If no
 
 args = parser.parse_args()
 
-class SumLayer(tf.keras.layers.Layer):
-    def __init__(self):
-        super(SumLayer, self).__init__()
-
-    def call(self, inputs):
-        return tf.reduce_sum(inputs, axis=1)
-
 class EmbedData(Sequence):
     def __init__(self, users, doc_dict, batch_size=128, max_len=100, neg_samplesize=1000, isTest=False, test_data=None):
         """
