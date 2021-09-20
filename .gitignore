@@ -147,3 +147,4 @@ cython_debug/
 *json
 *.h5
 extension/model/*.bin
+*.model

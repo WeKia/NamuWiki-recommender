@@ -26,6 +26,8 @@ def get_parser():
     parser.add_argument('--val_ratio', type=float, default=0.1)
     parser.add_argument('--test_ratio', type=float, default=0.1)
     parser.add_argument('--divide_tag', action='store_true', default=False, help='Divide tag(category) if there is / on tag')
+    parser.add_argument('--pass_preprocess', action='store_true', default=False,
+                        help='Pass preprocessing')
 
     args = parser.parse_args()
 
@@ -133,6 +135,30 @@ def mpPandasObj(func,pdObj,numThreads=24,mpBatches=1,**kargs):
 
     return diction
 
+def RedirectLinks(links, relink):
+    """
+    Relinking document's link
+    :param links: links of documents
+    :param relink: link dictionary
+    """
+    redirected_links = []
+
+    for link in links:
+        redirect = relink.get(link)
+        if redirect:
+            # Since there are secondary redirected documents, explore non-redirect document
+            while relink.get(redirect) is not None:
+                if redirect == relink.get(redirect):
+                    break
+                redirect = relink.get(redirect)
+
+            redirected_links.append(redirect)
+
+        else:
+            redirected_links.append(link)
+
+    return redirected_links
+
 def make_csv(args):
 
     csv = pd.read_csv(args.csv_path, keep_default_na=False, na_values=[''])
@@ -158,6 +184,8 @@ def make_csv(args):
     diction = {}
     category_transformer = {}
     i = 0
+
+    print(RedirectLinks(['TOUGH'], relink))
 
     for index, row in csv.iterrows():
         link = relink.get(row['title'])
@@ -196,6 +224,10 @@ def make_csv(args):
 
     print('process done')
 
+    csv['links'] = csv.links.apply(lambda x : RedirectLinks(x, relink))
+
+    print(csv)
+
     # processed = mpPandasObj(process_contributors, csv, numThreads=process_num, relink=relink)
     # processed = pd.DataFrame(list(processed.items()), columns=['title', 'contributors'])
     processed = pd.DataFrame(list(diction.items()), columns=['title', 'contributors'])
@@ -206,19 +238,6 @@ def make_csv(args):
     processed = processed.explode('title')
 
     processed = processed.drop_duplicates().dropna()
-
-    # contributor_count = processed.groupby('title').count()
-    # restricted_docs = contributor_count[contributor_count['contributors'] >= args.cont_min].index.tolist()
-    # processed = processed[processed['title'].isin(restricted_docs)]
-    #
-    # doc_count = processed.groupby('contributors').count()
-    # restricted_conts = doc_count[(doc_count['title'] >= args.doc_min) & (doc_count['title'] <= args.doc_max)].index.tolist()
-    # processed = processed[processed['contributors'].isin(restricted_conts)]
-    #
-    # print(processed.groupby('contributors').count().describe())
-    # print(processed.groupby('title').count().describe())
-    #
-    # csv = csv[csv['title'].isin(pd.unique(processed['title']))]
 
     if args.convert_idx:
         unique_title = pd.unique(processed['title'])
@@ -235,7 +254,6 @@ def make_csv(args):
             tags = []
             for e in x:
                 tags += e.split('/')
-
 
             return list(set(tags))
 
@@ -258,7 +276,7 @@ def main(args):
 
     np.random.seed(2)
 
-    if (not os.path.exists(args.contributor_path)) or (not os.path.exists(args.info_path)):
+    if not args.pass_preprocess or ((not os.path.exists(args.contributor_path)) or (not os.path.exists(args.info_path))):
         print("No preprocessed csv found")
         make_csv(args)
 
@@ -342,7 +360,7 @@ def main(args):
     test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
     test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
 
-    docs.to_csv('info_processed', index=False, encoding='utf-8-sig')
+    docs.to_csv('info_processed.csv', index=False, encoding='utf-8-sig')
 
     # with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
     #     for did in unique_did:

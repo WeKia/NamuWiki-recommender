@@ -1,3 +1,5 @@
+
+
 import numpy as np
 from gensim.models.doc2vec import TaggedDocument, Doc2Vec
 from gensim.models.callbacks import CallbackAny2Vec
@@ -9,12 +11,12 @@ import pandas as pd
 import time
 import multiprocessing as mp
 
-
 parser = argparse.ArgumentParser()
-parser.add_argument('--num_process', type=int, help='Number of process that processing graph parse', default=-1)
+parser.add_argument('--num_process', type=int, help='Number of process that processing graph parse', default=1)
 parser.add_argument('--csv_path', type=str, help='Path to documents information csv file', default='./data/info_processed.csv')
 parser.add_argument('--model_path', type=str, help='Path to doc2vec model', default='./data/doc2vec.model')
 parser.add_argument('--skip_train', action='store_true', default=False, help='Skip training')
+parser.add_argument('--vector_size', type=int, help='Size of vector size', default=128)
 parser.add_argument('--feature', type=str, help='Embedding feature for doc2vec (text, tag). Default is Text', default='text')
 
 args = parser.parse_args()
@@ -25,7 +27,8 @@ class MonitorCallback(CallbackAny2Vec):
         self.last= time.time()
 
     def on_epoch_end(self, model):
-        print('epoch ends {}: {}'.format(self.epoch, time.time() - self.last))
+        loss = model.get_latest_training_loss()
+        print('epoch ends {}: {} loss {}'.format(self.epoch, time.time() - self.last, loss))
         self.epoch += 1
         self.last = time.time()
 
@@ -71,16 +74,18 @@ def TrainModel(csv_path, num_process, output_path, feature):
         for index, row in tqdm(doc_info.iterrows(), total=len(doc_info)):
             if feature == 'text':
                 tokens = tokenizer.tokenize(row['text'])
+                tags = [row['title']]
             elif feature == 'tag':
-                tokens = row['category']
+                tokens = tokenizer.tokenize(row['text'])
+                tags = row['category']
             else:
                 raise "Feature not defined"
 
-            tagged_docs.append(TaggedDocument(tokens, [row['title']]))
+            tagged_docs.append(TaggedDocument(tokens, tags))
 
     print("Data processed!")
 
-    model = Doc2Vec(tagged_docs, vector_size=128, min_count=0, workers=4, epochs=50, callbacks=[MonitorCallback()])
+    model = Doc2Vec(tagged_docs, vector_size=args.vector_size, window=8, dm=1, min_count=0, workers=8, compute_loss=True, epochs=10, callbacks=[MonitorCallback()])
 
     model.save(output_path)
 
@@ -108,6 +113,35 @@ def _GetTaggedDoc(data, feature):
 
     return tagged_docs
 
+def Testing_model(doc_model, tag_vectors, target):
+    print('--------------------------------')
+    print(f'Target Key : {target}')
+    print(doc_model.dv.most_similar(target))
+
+    target_vec = tag_vectors[doc_model.dv.get_index(target)]
+
+    dists = np.dot(tag_vectors, target_vec) / np.linalg.norm(tag_vectors, axis=1)
+
+    topk = np.argsort(dists)[::-1][1:11]
+
+    print([(doc_model.dv.index_to_key[k], dists[k]) for k in topk])
+
+    # Since two vectors has same indices no problem with concatenating
+    doc_model.dv.fill_norms()
+
+    norm_tag_vec = tag_vectors / np.linalg.norm(tag_vectors, axis=1)[..., np.newaxis]
+    norm_doc_vec = doc_model.dv.vectors / doc_model.dv.norms[..., np.newaxis]
+
+    concat_vector = np.concatenate([norm_tag_vec, norm_doc_vec], axis=1)
+
+    target_vec = concat_vector[doc_model.dv.get_index(target)]
+
+    dists = np.dot(concat_vector, target_vec) / np.linalg.norm(concat_vector, axis=1)
+
+    topk = np.argsort(dists)[::-1][1:11]
+
+    print([(doc_model.dv.index_to_key[k], dists[k]) for k in topk])
+
 if __name__ == '__main__':
 
     if not args.skip_train:
@@ -115,6 +149,30 @@ if __name__ == '__main__':
     else:
         model = Doc2Vec.load(args.model_path)
 
-    print(model.dv.most_similar('대한민국'))
-    print(model.dv.most_similar('서울국제고등학교'))
-    print(model.dv.most_similar('드래곤볼'))
+    doc_info = pd.read_csv(args.csv_path)
+    doc_info['category'] = doc_info.category.apply(eval)
+
+    doc_model = Doc2Vec.load('../data/doc2vec.model')
+    tag_model = Doc2Vec.load('../data/doc2vec_tag.model')
+
+    tag_vectors = []
+
+    for i, row in doc_info.iterrows():
+        mean = []
+
+        for cat in row['category']:
+            mean.append(tag_model[cat])
+
+        if len(mean) == 0:
+            mean = [np.ones(64, )]
+
+        mean = np.array(mean).mean(axis=0)
+        mean = mean / np.linalg.norm(mean)
+
+        tag_vectors.append(mean)
+
+    tag_vectors = np.array(tag_vectors)
+
+    Testing_model(doc_model, tag_vectors, '대한민국')
+    Testing_model(doc_model, tag_vectors, '드래곤볼')
+    Testing_model(doc_model, tag_vectors, '과로사(인터넷 방송인)')

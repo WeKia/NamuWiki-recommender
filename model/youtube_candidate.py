@@ -1,7 +1,6 @@
 import argparse
 import numpy as np
 import pandas as pd
-import json
 import math
 import os
 from torch.utils.data import Dataset, DataLoader
@@ -165,7 +164,7 @@ def CreateModel(item_length, embed_size, side_embeds):
     dot = tf.keras.layers.Dot(axes=[1, 2])([user_embed, target_embed])
     output = tf.keras.layers.Activation('sigmoid')(dot)
 
-    lr_schedule = keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-2, decay_steps=1000, decay_rate=0.97)
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=1e-2, decay_steps=1000, decay_rate=0.97)
 
     model = tf.keras.Model(inputs=[item_sequence_input, target_item_input], outputs=output)
     model.compile(
