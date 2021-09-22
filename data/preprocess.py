@@ -3,6 +3,7 @@ import argparse
 import numpy as np
 import ast
 import time
+import math
 import datetime as dt
 import multiprocessing as mp
 import sys
@@ -16,6 +17,8 @@ def get_parser():
                         help='Path for contributor file')
     parser.add_argument('--info_path', type=str, default='info.csv',
                         help='Path for document info file')
+    parser.add_argument('--output_path', type=str, default='info_processed.csv',
+                        help='Output path for processed info csv file')
     parser.add_argument('--proc_num', type=int, help='Number of parsing processor default is -1 that is max core of cpu', default=-1)
     parser.add_argument('--use_category', action='store_true', default=False,
                         help='Use category instead of title')
@@ -226,8 +229,6 @@ def make_csv(args):
 
     csv['links'] = csv.links.apply(lambda x : RedirectLinks(x, relink))
 
-    print(csv)
-
     # processed = mpPandasObj(process_contributors, csv, numThreads=process_num, relink=relink)
     # processed = pd.DataFrame(list(processed.items()), columns=['title', 'contributors'])
     processed = pd.DataFrame(list(diction.items()), columns=['title', 'contributors'])
@@ -327,7 +328,7 @@ def main(args):
 
             if n_items_u >= 5:
                 idx = np.zeros(n_items_u, dtype='bool')
-                idx[np.random.choice(n_items_u, size=int(test_prop * n_items_u), replace=False).astype('int64')] = True
+                idx[np.random.choice(n_items_u, size=math.ceil(test_prop * n_items_u), replace=False).astype('int64')] = True
 
                 tr_list.append(group[np.logical_not(idx)])
                 te_list.append(group[idx])
@@ -360,7 +361,7 @@ def main(args):
     test_train_data.to_csv('test_tr.csv', index=False, encoding='utf-8-sig')
     test_test_data.to_csv('test_te.csv', index=False, encoding='utf-8-sig')
 
-    docs.to_csv('info_processed.csv', index=False, encoding='utf-8-sig')
+    docs.to_csv(args.output_path, index=False, encoding='utf-8-sig')
 
     # with open(os.path.join('unique_sid.txt'), 'w', -1, 'utf-8') as f:
     #     for did in unique_did:

@@ -1,5 +1,4 @@
-
-
+import json
 import numpy as np
 from gensim.models.doc2vec import TaggedDocument, Doc2Vec
 from gensim.models.callbacks import CallbackAny2Vec
@@ -8,7 +7,9 @@ from tqdm import tqdm
 from functools import partial
 import argparse
 import pandas as pd
+import tensorflow as tf
 import time
+import math
 import multiprocessing as mp
 
 parser = argparse.ArgumentParser()
@@ -85,7 +86,7 @@ def TrainModel(csv_path, num_process, output_path, feature):
 
     print("Data processed!")
 
-    model = Doc2Vec(tagged_docs, vector_size=args.vector_size, window=8, dm=1, min_count=0, workers=8, compute_loss=True, epochs=10, callbacks=[MonitorCallback()])
+    model = Doc2Vec(tagged_docs, vector_size=args.vector_size, window=8, min_count=0, workers=8, compute_loss=True, epochs=30, callbacks=[MonitorCallback()])
 
     model.save(output_path)
 
@@ -113,12 +114,26 @@ def _GetTaggedDoc(data, feature):
 
     return tagged_docs
 
+def GetCandidate(Base_vectors, target_vector, topk=100):
+    """
+    Get Candidate set from Base vectors with target vector
+    :param Base_vectors:
+    :param target_vector:
+    :param topk: How many Candidates need
+    """
+    dists = tf.keras.layers.Dot(axes=(2, 2))([Base_vectors, target_vector])
+    dists = tf.transpose(tf.squeeze(dists))
+
+    topk = tf.argsort(dists, axis=1).numpy()[:, -(topk + 1):-1]
+    return list(topk)
+
 def Testing_model(doc_model, tag_vectors, target):
     print('--------------------------------')
     print(f'Target Key : {target}')
     print(doc_model.dv.most_similar(target))
 
     target_vec = tag_vectors[doc_model.dv.get_index(target)]
+
 
     dists = np.dot(tag_vectors, target_vec) / np.linalg.norm(tag_vectors, axis=1)
 
@@ -129,10 +144,10 @@ def Testing_model(doc_model, tag_vectors, target):
     # Since two vectors has same indices no problem with concatenating
     doc_model.dv.fill_norms()
 
-    norm_tag_vec = tag_vectors / np.linalg.norm(tag_vectors, axis=1)[..., np.newaxis]
-    norm_doc_vec = doc_model.dv.vectors / doc_model.dv.norms[..., np.newaxis]
+    # norm_tag_vec = tag_vectors / np.linalg.norm(tag_vectors, axis=1)[..., np.newaxis]
+    # norm_doc_vec = doc_model.dv.vectors / doc_model.dv.norms[..., np.newaxis]
 
-    concat_vector = np.concatenate([norm_tag_vec, norm_doc_vec], axis=1)
+    concat_vector = np.concatenate([tag_vectors, doc_model.dv.vectors], axis=1)
 
     target_vec = concat_vector[doc_model.dv.get_index(target)]
 
@@ -152,8 +167,17 @@ if __name__ == '__main__':
     doc_info = pd.read_csv(args.csv_path)
     doc_info['category'] = doc_info.category.apply(eval)
 
-    doc_model = Doc2Vec.load('../data/doc2vec.model')
-    tag_model = Doc2Vec.load('../data/doc2vec_tag.model')
+    doc_model = Doc2Vec.load('./pretrain/doc2vec.model')
+    tag_model = Doc2Vec.load('./pretrain/doc2vec_tag.model')
+
+    with open("title_idx.json", 'w', encoding='UTF-8-sig') as f:
+        json.dump(doc_model.dv.key_to_index, f, ensure_ascii=False)
+
+    with open("idx_title.json", 'w', encoding='UTF-8-sig') as f:
+        json.dump( {v: k for k, v in doc_model.dv.key_to_index.items()}, f, ensure_ascii=False)
+
+    for a, b in zip(doc_model.dv.key_to_index.keys(), doc_info.title):
+        assert a==b
 
     tag_vectors = []
 
@@ -176,3 +200,18 @@ if __name__ == '__main__':
     Testing_model(doc_model, tag_vectors, '대한민국')
     Testing_model(doc_model, tag_vectors, '드래곤볼')
     Testing_model(doc_model, tag_vectors, '과로사(인터넷 방송인)')
+
+    vecs = []
+
+    for key in ['대한민국', '드래곤볼', '과로사(인터넷 방송인)']:
+        target_vec = tag_vectors[doc_model.dv.get_index(key)]
+
+        vecs.append(target_vec)
+
+    vecs = np.array(vecs)
+
+    topks = GetCandidate(tag_vectors[np.newaxis, ...], vecs[np.newaxis, ...], 10)
+
+    for topk in topks:
+        print([(doc_model.dv.index_to_key[k]) for k in topk])
+
