@@ -21,9 +21,9 @@ json_parser는 json 형태로 되어있는 덤프데이터를 마크다운을 �
 이후 데이터를 doc2vec 을 이용하여 학습합니다. doc2vec은 태그를 이용하는 방식과 문서의 내용을 이용하는 방식 두 가지 모델을 사용합니다.
 
 ## Requirements
-tensorflow 2.6.0
-gensim 4.1.1
-transformer 4.9.2
+- tensorflow 2.6.0
+- gensim 4.1.1
+- transformer 4.9.2
 
 
 ## TODO
