@@ -71,7 +71,13 @@ async function Recommendation(recentView, sendResponse){
 
     running = true;
 
-    const batch_size = 32;
+    var batch_size = 64;
+    chrome.storage.local.get("batchVal", ({ batchVal }) => {
+        if(batchVal) {
+            console.log(batchVal);
+            batch_size = batchVal;
+        }
+    });
     const idx = await GetSequence(recentView);
 
     const model_url = chrome.runtime.getURL('./model/model.json');
@@ -142,12 +148,29 @@ async function Recommendation(recentView, sendResponse){
 async function GetSequence(recentView){
     var recent_idx = []
 
-    const json_url = chrome.runtime.getURL('/data/title_idx.json');
-    const r = await fetch(json_url);
 
-    const title_idx = await r.json();
+    var title_idx = null;
+    try{
+        const json_url = chrome.runtime.getURL('/data/title_idx.json');
+        const r = await fetch(json_url);
+        title_idx = await r.json();
+    }
+    catch (e) {
+        console.error('File title_idx.json is not found!');
+    }
 
-    for(var i=0; i < recentView.titles.length; i++) {
+    var setRecentVal = 20;
+
+    chrome.storage.local.get("recentVal", ({ recentVal }) => {
+        if(recentVal) {
+            console.log(recentVal);
+            setRecentVal = recentVal;
+        }
+    });
+
+    const loop = Math.min(setRecentVal, recentView.titles.length);
+
+    for(var i=0; i < loop; i++) {
         idx = title_idx[recentView.titles[i]]
 
         if (typeof idx == "undefined" || idx == null){

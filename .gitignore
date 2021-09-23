@@ -148,3 +148,4 @@ cython_debug/
 *.h5
 extension/model/*.bin
 *.model
+*.zip

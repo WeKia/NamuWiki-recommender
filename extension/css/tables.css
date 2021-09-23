@@ -35,4 +35,5 @@
     display: block;
     text-align: right;
     padding: .5rem .7rem;
+    cursor: pointer;
 }

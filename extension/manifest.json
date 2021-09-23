@@ -1,12 +1,15 @@
 {
     "name" : "나무위키 문서추천",
-    "version" : "0.8",
+    "version" : "0.9",
     "description" : "Namu wiki recommendation",
     "permissions" : ["storage", "tabs"],
     "background" : {
         "persistent": false,
         "page" : "src/background.html"
 
+    },
+    "browser_action": {
+        "default_popup": "src/popup.html"
     },
     "content_scripts": [
         {
@@ -15,7 +18,6 @@
             ],
             "js": [
                 "src/main.js",
-                "src/ndarray.js",
                 "src/recommender.js"
             ],
             "css" : [
@@ -25,7 +27,7 @@
             "all_frames": true
         }
     ],
-    "content_security_policy":  "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'; script-src-elem 'self' https://cdn.jsdelivr.net data: blob:;",
+    "content_security_policy":  "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; object-src 'self'; script-src-elem 'self' https://cdn.jsdelivr.net 'self' https://ajax.googleapis.com data: blob:;",
     "web_accessible_resources": [
         "data/*.json",
         "model/*.bin",

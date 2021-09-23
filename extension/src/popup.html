@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+    <link rel="stylesheet" href="popup.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="popup.js"></script>
+    <meta charset="utf-8">
+    <body>
+        <div class="RecentViewSlider">
+            <div class="inlineInput">
+              <p class="inputtext">추천에 영향을 주는 문서 수 : </p> 
+              <input class="inputline" id="RecentInput" size=1 min=1 max=20></input>
+            </div>
+            <input type="range" id="RecentSlider" min=1 max=20>
+        </div>
+
+        <div class="BatchSlider">
+            <div class="inlineInput">
+              <p class="inputtext">배치 크기 : </p> 
+              <input class="inputline" id="BatchInput" size=1 min=1 max=256></input>
+            </div>
+            <input type="range" id="BatchSlider" min=1 max=256>
+        </div>
+    </body>
+</html>

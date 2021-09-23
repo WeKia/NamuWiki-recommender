@@ -1,0 +1,15 @@
+.inputtext {
+    display: inline-block;
+   }
+   
+.inlineInput {
+    display: flex;
+    text-align: center;
+    align-items: center
+}
+
+.inputline {
+    height : 10px;
+    display: inline-block;
+    margin : 5px;
+}

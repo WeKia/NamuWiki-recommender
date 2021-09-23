@@ -47,7 +47,7 @@ class MeanPool(tf.keras.layers.Layer):
     def compute_mask(self, input, input_mask=None):
         # do not pass the mask to the next layers
         return None
-    
+
     def call(self, x, mask=None):
         if mask is not None:
           mask = tf.cast(mask, x[0].dtype)
@@ -58,7 +58,6 @@ class MeanPool(tf.keras.layers.Layer):
               mask, axis=1)
         else:
           return tf.reduce_mean(x, axis=1)
-
 
     def compute_output_shape(self, input_shape):
           # remove temporal dimension
