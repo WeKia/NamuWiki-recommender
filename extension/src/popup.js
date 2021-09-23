@@ -75,4 +75,41 @@ $( document ).ready(function() {
 
         chrome.storage.local.set({batchVal : batch_val});
     });
+
+    var RecInput = $("#RecInput");
+    var Recslider = $("#RecSlider");
+
+    var rec_val = 0;
+
+    chrome.storage.local.get("recVal", ({ recVal }) => {
+        if(recVal) {
+            rec_val = recVal;
+
+            Recslider.val(rec_val);
+            RecInput.val(rec_val);
+        }
+        else {
+            rec_val = 15;
+
+            Recslider.val(rec_val);
+            RecInput.val(rec_val);
+        }
+    });
+
+    Recslider.on("input", function() {
+        RecInput.val($(this).val());
+
+        rec_val = $(this).val();
+
+        chrome.storage.local.set({recVal : rec_val});
+    });
+
+    RecInput.on("change", function(){
+        RecInput.val(clampNumber(RecInput.val(), 1, 30));
+        Recslider.val($(this).val());
+
+        rec_val = $(this).val();
+
+        chrome.storage.local.set({recVal : rec_val});
+    });
 });

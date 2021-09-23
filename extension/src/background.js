@@ -50,6 +50,18 @@ class MeanPool extends tf.layers.Layer {
 tf.serialization.registerClass(NormLayer);
 tf.serialization.registerClass(MeanPool);
 
+const readLocalStorage = async (key, defalut) => {
+    return new Promise((resolve, reject) => {
+      chrome.storage.local.get([key], function (result) {
+        if (result[key] === undefined) {
+          resolve(defalut);
+        } else {
+          resolve(result[key]);
+        }
+      });
+    });
+  };
+
 chrome.runtime.onMessage.addListener(function (request, sender, sendResponse) {
     const res = {farewell: "well"};
 
@@ -71,13 +83,7 @@ async function Recommendation(recentView, sendResponse){
 
     running = true;
 
-    var batch_size = 64;
-    chrome.storage.local.get("batchVal", ({ batchVal }) => {
-        if(batchVal) {
-            console.log(batchVal);
-            batch_size = batchVal;
-        }
-    });
+    var batch_size = await readLocalStorage("batchVal", 64);
     const idx = await GetSequence(recentView);
 
     const model_url = chrome.runtime.getURL('./model/model.json');
@@ -124,12 +130,14 @@ async function Recommendation(recentView, sendResponse){
             }
         }
 
-        const Top10Docs = await GetTitles(argsort(Scores).reverse().slice(1, 21));
+        var rec_val = await readLocalStorage("recVal", 15);;
+
+        const TopDocs = await GetTitles(argsort(Scores).reverse().slice(0, rec_val));
 
         recDoc = {'titles' : []};
 
-        for(var i=0;i < Top10Docs.length; i++){
-            recDoc.titles.push(Top10Docs[i]);
+        for(var i=0;i < TopDocs.length; i++){
+            recDoc.titles.push(TopDocs[i]);
         }
 
         chrome.storage.local.set({"Recommend" : recDoc}, function(){});
@@ -159,14 +167,7 @@ async function GetSequence(recentView){
         console.error('File title_idx.json is not found!');
     }
 
-    var setRecentVal = 20;
-
-    chrome.storage.local.get("recentVal", ({ recentVal }) => {
-        if(recentVal) {
-            console.log(recentVal);
-            setRecentVal = recentVal;
-        }
-    });
+    var setRecentVal = await readLocalStorage("recentVal", 20);
 
     const loop = Math.min(setRecentVal, recentView.titles.length);
 

@@ -1,6 +1,6 @@
 {
     "name" : "나무위키 문서추천",
-    "version" : "0.9",
+    "version" : "1.0",
     "description" : "Namu wiki recommendation",
     "permissions" : ["storage", "tabs"],
     "background" : {
