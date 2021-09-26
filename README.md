@@ -4,7 +4,7 @@
 
 ## 사용 방법
 ### 확장 프로그램 이용자
-프로그램 작동 방식과는 상관없이 확장프로그램을 이용하실 분들은 https://kmikey1004.tistory.com/4 를 참고해주세요.
+프로그램 작동 방식과는 상관없이 확장프로그램을 이용하실 분들은 https://chrome.google.com/webstore/detail/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4-%EB%AC%B8%EC%84%9C%EC%B6%94%EC%B2%9C/cpbjahhfncblnefjlclegndkbhbikbep?hl=ko&authuser=0 를 참고해주세요.
 
 ### 데이터 정제
 문서 추천기는 나무위키 덤프데이터를 이용합니다. https://namu.wiki/w/%EB%82%98%EB%AC%B4%EC%9C%84%ED%82%A4:%EB%8D%B0%EC%9D%B4%ED%84%B0%EB%B2%A0%EC%9D%B4%EC%8A%A4%20%EB%8D%A4%ED%94%84 에서 먼저 덤프 데이터를 다운받으시길바랍니다.
